@@ -1,99 +1,54 @@
 # 🌊 AquaScan  
-### 🚀 AI-Assisted Water Pollution Reporting System  
+### AI-Assisted Water Pollution Reporting System  
 
 <p align="center">
-  <img src="https://img.shields.io/badge/AI-Computer%20Vision-blue?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/YOLO-Detection-green?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/Backend-Node.js-orange?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/Database-MongoDB-brightgreen?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/Status-Prototype-important?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/AI-Computer%20Vision-blue?style=flat-square" />
+  <img src="https://img.shields.io/badge/YOLO-Detection-green?style=flat-square" />
+  <img src="https://img.shields.io/badge/FullStack-React%20%2B%20Node.js-orange?style=flat-square" />
+  <img src="https://img.shields.io/badge/Database-MongoDB-brightgreen?style=flat-square" />
 </p>
 
 ---
 
 ## 🧠 Overview  
 
-AquaScan is a **full-stack AI-powered prototype** designed to detect and report water pollution using computer vision.
+AquaScan is a **full-stack AI prototype** that enables users to report water pollution through images.  
 
-The system allows users to:
-- upload images of polluted water bodies  
-- analyze them using a YOLO-based model  
-- generate structured reports  
-- track pollution cases through a dashboard  
+It combines:
+- a **React frontend** for user interaction  
+- a **Node.js backend** for processing and APIs  
+- a **Python-based ML service (YOLO)** for detection  
+- a **MongoDB database** for storing reports  
 
-This project demonstrates **end-to-end integration of AI + backend + frontend systems**, focusing on real-world environmental impact.
+The goal is to convert raw pollution images into **structured, trackable reports**.
 
 ---
 
-## ⚡ One-Line Pitch  
+## ⚡ Core Idea  
 
-> **Turning pollution sightings into structured, actionable reports using AI.**
+> **Upload → Detect → Store → Track**
+
+A simple pipeline where users upload images and the system transforms them into meaningful environmental reports.
 
 ---
 
 ## 🏗️ Architecture  
 
 <p align="center">
-  <img src="./architecture-diagram.jpg" width="700"/>
+  <img src="./architecture-diagram.jpg" width="650"/>
 </p>
 
-> ⚠️ The diagram represents the **complete system vision**.  
-> The current implementation includes core working components (frontend + backend + ML service + DB), while some advanced features are still in progress.
-
 ---
 
-## 🚀 Core Features  
-
-### 👤 User Side  
-- 📸 Upload pollution images  
-- 📍 Add location (manual / geotag)  
-- 🤖 AI-based waste detection (YOLO)  
-- ⚠️ Severity & urgency estimation  
-- 📊 View report status  
-
----
-
-### 🏢 Committee / Admin Side  
-- 📥 View incoming reports  
-- 🗺️ Track pollution locations  
-- 🔧 Update report status  
-- 📊 Basic monitoring dashboard  
-
----
-
-### 🤖 AI Pipeline  
-- YOLO-based object detection  
-- Custom aquatic waste dataset (training in progress)  
-- Detection → structured output conversion  
-- Confidence-based scoring  
-
----
-
-## ⚙️ Tech Stack  
-
-| Layer        | Technology |
-|-------------|-----------|
-| 🎨 Frontend | React (Vite) |
-| ⚙️ Backend  | Node.js + Express |
-| 🗄️ Database | MongoDB |
-| 🤖 ML       | Python + YOLO |
-| 🔗 API      | REST APIs |
-
----
-
-## 🔄 System Flow  
+## 🔗 How It Works  
 
 ```text
-User uploads image
-        ↓
-Frontend sends request
-        ↓
-Backend processes request
-        ↓
-ML Service (YOLO) analyzes image
-        ↓
-Results sent back to backend
-        ↓
-Stored in MongoDB
-        ↓
-Displayed on dashboard
+Frontend (React)
+      ↓
+Backend (Node.js API)
+      ↓
+ML Service (YOLO - Python)
+      ↓
+Database (MongoDB)
+      ↓
+Back to Frontend (Dashboard)
