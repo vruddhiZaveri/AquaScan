@@ -1,8 +1,9 @@
 const BASE_URL =
-  window.location.hostname === "localhost" ||
+  import.meta.env.VITE_API_BASE ||
+  (window.location.hostname === "localhost" ||
   window.location.hostname === "127.0.0.1"
-    ? "http://localhost:5000/api"
-    : `http://${window.location.hostname}:5000/api`;
+    ? "http://localhost:5001/api"
+    : `http://${window.location.hostname}:5001/api`);
 
 export async function api(path, options = {}) {
   const url = `${BASE_URL}${path}`;

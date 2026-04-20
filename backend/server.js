@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import multer from "multer";
 import axios from "axios";
+import FormData from "form-data";
 
 dotenv.config();
 
@@ -15,17 +16,13 @@ app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 const PORT = process.env.PORT || 5000;
 const AI_API_KEY = process.env.AI_API_KEY;
 const AI_MODEL = process.env.AI_MODEL || "gemini-1.5-flash";
+const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://127.0.0.1:8000";
 
 const storage = multer.memoryStorage();
 const upload = multer({
   storage,
   limits: { fileSize: 15 * 1024 * 1024 },
 });
-
-function toNumber(value, fallback = 0) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
-}
 
 function safeJsonParse(text) {
   try {
@@ -57,83 +54,121 @@ function extractJson(text = "") {
   return null;
 }
 
-function normalizeAi(data = {}) {
-  const severity = String(data.severity || "low").toLowerCase();
-  const allowedSeverity = ["low", "medium", "high"].includes(severity)
-    ? severity
-    : "low";
+function normalizeMlForFrontend(data = {}, live = true) {
+  const severity = String(data.severity || "LOW").toLowerCase();
 
-  const densityRaw = String(data.densityLevel || data.density || "Low");
-  const densityLevel = ["low", "medium", "high"].includes(
-    densityRaw.toLowerCase(),
-  )
-    ? densityRaw.charAt(0).toUpperCase() + densityRaw.slice(1).toLowerCase()
-    : "Low";
+  const urgencyScore =
+    typeof data.urgency === "string"
+      ? parseInt(data.urgency.split("/")[0], 10) || 0
+      : Number(data.urgencyScore || 0);
+
+  const coveragePercent =
+    typeof data.coverage === "string"
+      ? parseFloat(data.coverage.replace("%", "")) || 0
+      : Number(data.coveragePercent || 0);
 
   let confidence = data.confidence;
   if (typeof confidence === "string") {
-    confidence = parseFloat(confidence.replace("%", ""));
-    confidence = confidence > 1 ? confidence / 100 : confidence;
+    const c = confidence.toLowerCase();
+    if (c.includes("high")) confidence = 0.9;
+    else if (c.includes("medium")) confidence = 0.6;
+    else confidence = 0.2;
   }
-  confidence = typeof confidence === "number" ? confidence : 0.2;
-  confidence = Math.max(0, Math.min(1, confidence));
-
-  const coveragePercent =
-    typeof data.coveragePercent === "string"
-      ? parseFloat(data.coveragePercent.replace("%", ""))
-      : toNumber(data.coveragePercent, 0);
 
   return {
     pollutionType: data.pollutionType || "Analysis Unavailable",
-    severity: allowedSeverity,
-    urgencyScore: Math.max(1, Math.min(10, toNumber(data.urgencyScore, 2))),
-    detectedCount: Math.max(0, toNumber(data.detectedCount, 0)),
-    densityLevel,
-    coveragePercent: Math.max(0, Math.min(100, toNumber(coveragePercent, 0))),
-    confidence,
+    severity,
+    urgencyScore,
+    detectedCount: Number(data.detectedCount || 0),
+    densityLevel: data.density || data.densityLevel || "Low",
+    coveragePercent,
+    confidence: Number(confidence || 0.2),
     detectedItems: Array.isArray(data.detectedItems) ? data.detectedItems : [],
-    description:
-      data.description ||
-      "The analysis service could not confidently evaluate this image.",
-    recommendations:
-      data.recommendations ||
-      "Please retry with a clearer image or send this report for manual review.",
-    reviewRequired: Boolean(data.reviewRequired),
-    live: true,
-    modelUsed: AI_MODEL,
+    description: data.description || "",
+    recommendations: data.recommendation || data.recommendations || "",
+    reviewRequired: Boolean(data.needsBetterImage || data.reviewRequired),
+    live,
+    modelUsed: data.rawSource || "custom-yolo-model",
   };
 }
 
-function fallbackAi(reason = "AI analysis failed.", errorCode = null) {
+function fallbackAi(reason = "Analysis failed.") {
   return {
     pollutionType: "Analysis Unavailable",
-    severity: "low",
-    urgencyScore: 2,
-    detectedCount: 0,
-    densityLevel: "Low",
-    coveragePercent: 0,
-    confidence: 0.2,
-    detectedItems: [],
+    severity: "UNKNOWN",
+    urgency: "N/A",
+    density: "Unknown",
+    coverage: "N/A",
+    confidence: "Low",
     description: reason,
-    recommendations:
-      errorCode === 429
-        ? "AI quota/rate limit reached. Please wait a bit and retry, or switch to manual review."
-        : "Please retry with a clearer image or send this report for manual review.",
-    reviewRequired: true,
-    live: false,
-    status: errorCode === 429 ? "rate_limited" : "fallback",
-    modelUsed: "Fallback",
+    recommendation:
+      "Please retry with a clearer image or review the image manually.",
+    needsBetterImage: true,
+    rawSource: "backend-fallback",
   };
 }
 
-async function analyzeImage(file) {
+function shouldFallbackToGemini(mlResult) {
+  if (!mlResult) return true;
+
+  const severity = String(mlResult.severity || "").toUpperCase();
+  const pollutionType = String(mlResult.pollutionType || "").toLowerCase();
+  const needsBetterImage = Boolean(mlResult.needsBetterImage);
+
+  if (needsBetterImage) return true;
+  if (severity === "UNKNOWN") return true;
+  if (pollutionType.includes("analysis failed")) return true;
+  if (pollutionType.includes("image unclear")) return true;
+
+  return false;
+}
+
+async function analyzeWithML(file) {
+  try {
+    if (!file?.buffer) {
+      return fallbackAi("No image file received by the backend.");
+    }
+
+    const form = new FormData();
+    form.append("file", file.buffer, {
+      filename: file.originalname || "upload.jpg",
+      contentType: file.mimetype || "image/jpeg",
+    });
+
+    const response = await axios.post(`${ML_SERVICE_URL}/predict`, form, {
+      headers: {
+        ...form.getHeaders(),
+      },
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
+      timeout: 60000,
+    });
+
+    return normalizeMlForFrontend(response.data, true);
+
+  } catch (error) {
+    console.error("===== LOCAL ML ERROR =====");
+    console.error("MESSAGE:", error?.message || error);
+
+    if (error?.response) {
+      console.error("STATUS:", error.response.status);
+      console.error("DATA:", error.response.data);
+    }
+
+    return fallbackAi(`Local ML failed: ${error?.message || "Unknown error"}`);
+  }
+}
+
+async function analyzeWithGemini(file) {
   try {
     if (!file?.buffer) {
       return fallbackAi("No image file received by the backend.");
     }
 
     if (!AI_API_KEY) {
-      return fallbackAi("AI API key is missing in backend environment.");
+      return fallbackAi(
+        "Gemini fallback unavailable because AI_API_KEY is missing.",
+      );
     }
 
     const mimeType = file.mimetype || "image/jpeg";
@@ -142,38 +177,31 @@ async function analyzeImage(file) {
     const prompt = `
 You are AquaScan's aquatic waste analysis system.
 
-Your task:
-Analyze ONLY the uploaded image and determine whether clearly visible aquatic waste or water-surface litter is present.
+Analyze ONLY the uploaded image and determine whether visible aquatic waste or floating water-surface litter is present.
 
 Rules:
 - Focus only on visible waste/pollution in or on water.
 - Detect man-made waste such as plastic bottles, plastic bags, wrappers, foam, cans, containers, nets, floating debris.
-- Do NOT invent objects that are not visible.
-- If the image is unclear, still return the best cautious estimate.
-- severity must be one of: low, medium, high
-- densityLevel must be one of: Low, Medium, High
-- confidence must be between 0 and 1
-- coveragePercent must be between 0 and 100
-- urgencyScore must be between 1 and 10
-- detectedCount must be an integer
-
-Return ONLY valid JSON.
-No markdown.
-No explanation.
-No code block.
+- Do not invent objects that are not visible.
+- severity must be one of: LOW, MEDIUM, HIGH, UNKNOWN
+- urgency must be in style like: 1/10, 6/10, 9/10, or N/A
+- density must be one of: Minimal, Low, Moderate, High, Very High, Unknown
+- coverage must be in style like: 0%, 12%, 45%, or N/A
+- confidence must be one of: Low, Medium, High
+- Return ONLY valid JSON
+- No markdown
+- No code block
 
 {
-  "pollutionType": "Plastic Pollution",
-  "severity": "medium",
-  "urgencyScore": 6,
-  "detectedCount": 4,
-  "densityLevel": "Medium",
-  "coveragePercent": 12,
-  "confidence": 0.74,
-  "detectedItems": ["plastic bottle", "plastic bag"],
-  "description": "Visible floating plastic waste is present on the water surface.",
-  "recommendations": "Schedule cleanup soon and monitor this area.",
-  "reviewRequired": false
+  "pollutionType": "Plastic and Foam Waste",
+  "severity": "HIGH",
+  "urgency": "9/10",
+  "density": "High",
+  "coverage": "75%",
+  "confidence": "High",
+  "description": "A very high concentration of plastic bottles and foam pieces are clearly visible floating on the water surface, indicating severe plastic pollution.",
+  "recommendation": "Immediate cleanup action is recommended. Cleanup teams should remove the large volume of plastic and foam waste and investigate the pollution source.",
+  "needsBetterImage": false
 }
 `.trim();
 
@@ -213,18 +241,18 @@ No code block.
     const rawText =
       response?.data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
-    console.log("===== RAW AI RESPONSE =====");
+    console.log("===== RAW GEMINI RESPONSE =====");
     console.log(rawText);
 
     const parsed = extractJson(rawText);
 
     if (!parsed) {
-      return fallbackAi("AI returned an unreadable response format.");
+      return fallbackAi("Gemini returned an unreadable response format.");
     }
 
-    return normalizeAi(parsed);
+    return normalizeGeminiAi(parsed);
   } catch (error) {
-    console.error("===== AI ENGINE ANALYSIS ERROR =====");
+    console.error("===== GEMINI FALLBACK ERROR =====");
     console.error("MESSAGE:", error?.message || error);
 
     if (error?.response) {
@@ -233,16 +261,27 @@ No code block.
     }
 
     return fallbackAi(
-      `AI request failed: ${error?.message || "Unknown error"}`,
+      `Gemini fallback failed: ${error?.message || "Unknown error"}`,
     );
   }
+}
+
+async function analyzeImage(file) {
+  const mlResult = await analyzeWithML(file);
+
+  return {
+    ...mlResult,
+    analysisSource: "local-ml",
+    live: true,
+  };
 }
 
 app.get("/", (req, res) => {
   res.json({
     success: true,
     message: "AquaScan backend running",
-    model: AI_MODEL,
+    mlService: ML_SERVICE_URL,
+    geminiFallbackEnabled: Boolean(AI_API_KEY),
   });
 });
 
@@ -327,6 +366,6 @@ app.post("/api/reports", upload.single("file"), async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🤖 AI Model: ${AI_MODEL}`);
-  console.log(`🔑 API Key Present: ${AI_API_KEY ? "Yes" : "No"}`);
+  console.log(`🤖 Local ML Service: ${ML_SERVICE_URL}`);
+  console.log(`🧠 Gemini Fallback: ${AI_API_KEY ? "Enabled" : "Disabled"}`);
 });

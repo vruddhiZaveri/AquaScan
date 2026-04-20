@@ -1,0 +1,18 @@
+# env files
+.env
+
+# python
+__pycache__/
+*.pyc
+
+# model files
+*.pt
+
+# zip files
+*.zip
+
+# node modules
+node_modules/
+
+# logs
+*.log
