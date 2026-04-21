@@ -1,29 +1,77 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { T } from "../../styles/theme.js";
 import { useReports } from "../../hooks/useReports.js";
 
+function normalizeCommitteeValue(value = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase();
+}
+
+function reportBelongsToCommittee(report, user) {
+  const selected = Array.isArray(report?.selectedCommittees)
+    ? report.selectedCommittees
+    : [];
+
+  if (!selected.length) return true;
+
+  const userId = normalizeCommitteeValue(user?.id);
+  const userName = normalizeCommitteeValue(user?.committeeName);
+
+  return selected.some((committee) => {
+    if (typeof committee === "string") {
+      const value = normalizeCommitteeValue(committee);
+      return value === userId || value === userName;
+    }
+
+    if (committee && typeof committee === "object") {
+      const cid = normalizeCommitteeValue(committee.id);
+      const cname = normalizeCommitteeValue(committee.committeeName);
+      return cid === userId || cname === userName;
+    }
+
+    return false;
+  });
+}
+
 export default function CommitteeAnalytics({ user }) {
   const { reports: allReports, loading } = useReports();
-  const mine = allReports.filter(
-    (r) => (r.selectedCommittees || []).includes(user.id) || !r.selectedCommittees?.length,
+
+  const mine = useMemo(
+    () => allReports.filter((report) => reportBelongsToCommittee(report, user)),
+    [allReports, user],
   );
 
   const total = mine.length;
-  const resolved = mine.filter((r) => r.status === "resolved").length;
-  const pending = mine.filter((r) => r.status === "submitted").length;
-  const highSev = mine.filter((r) => String(r.ai?.severity || "").toLowerCase() === "high").length;
+  const resolved = mine.filter(
+    (report) => String(report.status || "").toLowerCase() === "resolved",
+  ).length;
+  const pending = mine.filter((report) =>
+    ["submitted", "under_review", "in_progress"].includes(
+      String(report.status || "").toLowerCase(),
+    ),
+  ).length;
+  const highSev = mine.filter(
+    (report) => String(report.ai?.severity || "").toLowerCase() === "high",
+  ).length;
+
   const sevDist = {
-    low: mine.filter((r) => String(r.ai?.severity || "").toLowerCase() === "low").length,
-    medium: mine.filter((r) => String(r.ai?.severity || "").toLowerCase() === "medium").length,
+    low: mine.filter(
+      (report) => String(report.ai?.severity || "").toLowerCase() === "low",
+    ).length,
+    medium: mine.filter(
+      (report) => String(report.ai?.severity || "").toLowerCase() === "medium",
+    ).length,
     high: highSev,
   };
+
   const typeFreq = {};
-  mine.forEach((r) => {
-    const t = r.ai?.pollutionType || "Unknown";
-    typeFreq[t] = (typeFreq[t] || 0) + 1;
+  mine.forEach((report) => {
+    const type = report.ai?.pollutionType || "Unknown";
+    typeFreq[type] = (typeFreq[type] || 0) + 1;
   });
 
-  if (loading)
+  if (loading) {
     return (
       <div
         style={{
@@ -45,6 +93,7 @@ export default function CommitteeAnalytics({ user }) {
         />
       </div>
     );
+  }
 
   const maxType = Math.max(...Object.values(typeFreq), 1);
 
@@ -61,6 +110,7 @@ export default function CommitteeAnalytics({ user }) {
       >
         Analytics
       </h2>
+
       <div
         style={{
           display: "grid",
@@ -74,9 +124,9 @@ export default function CommitteeAnalytics({ user }) {
           ["Resolved", resolved, T.success],
           ["High Severity", highSev, T.danger],
           ["Pending", pending, T.warn],
-        ].map(([l, v, c]) => (
+        ].map(([label, value, color]) => (
           <div
-            key={l}
+            key={label}
             style={{
               background: T.bg2,
               border: `1px solid ${T.border}`,
@@ -93,10 +143,10 @@ export default function CommitteeAnalytics({ user }) {
                 letterSpacing: 0.8,
               }}
             >
-              {l.toUpperCase()}
+              {label.toUpperCase()}
             </p>
-            <p style={{ color: c, fontSize: 26, fontWeight: 800, margin: 0 }}>
-              {v}
+            <p style={{ color, fontSize: 26, fontWeight: 800, margin: 0 }}>
+              {value}
             </p>
           </div>
         ))}
@@ -122,12 +172,13 @@ export default function CommitteeAnalytics({ user }) {
         >
           SEVERITY DISTRIBUTION
         </p>
+
         {[
           ["High", sevDist.high, T.danger],
           ["Medium", sevDist.medium, T.warn],
           ["Low", sevDist.low, T.success],
-        ].map(([l, v, c]) => (
-          <div key={l} style={{ marginBottom: 10 }}>
+        ].map(([label, value, color]) => (
+          <div key={label} style={{ marginBottom: 10 }}>
             <div
               style={{
                 display: "flex",
@@ -135,16 +186,18 @@ export default function CommitteeAnalytics({ user }) {
                 marginBottom: 4,
               }}
             >
-              <span style={{ color: T.t1, fontSize: 12 }}>{l}</span>
-              <span style={{ color: c, fontSize: 12, fontWeight: 700 }}>{v}</span>
+              <span style={{ color: T.t1, fontSize: 12 }}>{label}</span>
+              <span style={{ color, fontSize: 12, fontWeight: 700 }}>
+                {value}
+              </span>
             </div>
             <div style={{ background: T.bg1, borderRadius: 4, height: 7 }}>
               <div
                 style={{
-                  background: c,
+                  background: color,
                   borderRadius: 4,
                   height: 7,
-                  width: total ? `${Math.round((v / total) * 100)}%` : "0%",
+                  width: total ? `${Math.round((value / total) * 100)}%` : "0%",
                   transition: "width .6s",
                 }}
               />
@@ -172,10 +225,11 @@ export default function CommitteeAnalytics({ user }) {
         >
           WASTE TYPE FREQUENCY
         </p>
+
         {Object.entries(typeFreq)
           .sort((a, b) => b[1] - a[1])
-          .map(([t, v]) => (
-            <div key={t} style={{ marginBottom: 9 }}>
+          .map(([type, value]) => (
+            <div key={type} style={{ marginBottom: 9 }}>
               <div
                 style={{
                   display: "flex",
@@ -194,9 +248,11 @@ export default function CommitteeAnalytics({ user }) {
                     paddingRight: 8,
                   }}
                 >
-                  {t}
+                  {type}
                 </span>
-                <span style={{ color: T.blueL, fontSize: 12, fontWeight: 700 }}>{v}</span>
+                <span style={{ color: T.blueL, fontSize: 12, fontWeight: 700 }}>
+                  {value}
+                </span>
               </div>
               <div style={{ background: T.bg1, borderRadius: 4, height: 6 }}>
                 <div
@@ -204,14 +260,22 @@ export default function CommitteeAnalytics({ user }) {
                     background: T.blue,
                     borderRadius: 4,
                     height: 6,
-                    width: `${Math.round((v / maxType) * 100)}%`,
+                    width: `${Math.round((value / maxType) * 100)}%`,
                   }}
                 />
               </div>
             </div>
           ))}
+
         {!Object.keys(typeFreq).length && (
-          <p style={{ color: T.t4, fontSize: 13, textAlign: "center", margin: 0 }}>
+          <p
+            style={{
+              color: T.t4,
+              fontSize: 13,
+              textAlign: "center",
+              margin: 0,
+            }}
+          >
             No report data yet.
           </p>
         )}

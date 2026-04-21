@@ -64,10 +64,10 @@ export default function DetectionResult({ ai }) {
         {[
           ["POLLUTION TYPE", ai.pollutionType, T.t1],
           ["SEVERITY", (ai.severity || "").toUpperCase(), sc.c],
-          ["URGENCY", `${ai.urgencyScore}/10`, sc.c],
-          ["OBJECTS DETECTED", ai.detectedCount || 0, T.blueL],
-          ["DENSITY", ai.densityLevel || "—", T.blueL],
-          ["COVERAGE", `${ai.coveragePercent || 0}%`, T.blueL],
+          ["URGENCY", ai.urgency || `${ai.urgencyScore || 0}/10`, sc.c],
+          ["STATUS", ai.status || "Live", T.blueL],
+          ["ACTION NEEDED", ai.actionNeeded || "Monitor", T.blueL],
+          ["REPORT TYPE", ai.reportType || "Floating Waste", T.blueL],
         ].map(([l, v, c]) => (
           <div
             key={l}

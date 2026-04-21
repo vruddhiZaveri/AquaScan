@@ -31,18 +31,35 @@ function normalizeAiResponse(raw = {}, isLive = false) {
 
   const severity = String(raw.severity || "medium").toLowerCase();
   const urgencyScore = parseUrgency(raw.urgencyScore ?? raw.urgency, 5);
-  const detectedCount =
-    raw.detectedCount ?? raw.objects_detected ?? raw.objectsDetected ?? 0;
-  const densityLevel =
-    raw.densityLevel || raw.density || raw.density_level || "Medium";
-  const coveragePercent = parsePercent(
-    raw.coveragePercent ?? raw.coverage ?? raw.coverage_percent,
-    0,
-  );
+
+  const status =
+    raw.status || (raw.needsBetterImage ? "Review Needed" : "Live");
+
+  const actionNeeded =
+    raw.actionNeeded ||
+    (severity === "high"
+      ? "Immediate"
+      : severity === "medium"
+        ? "Minor Cleanup"
+        : "Monitor");
+
+  const reportType =
+    raw.reportType ||
+    (severity === "high"
+      ? "Heavy Pollution"
+      : severity === "medium"
+        ? "Moderate Pollution"
+        : "Floating Waste");
+
+  const imageQuality =
+    raw.imageQuality || (raw.needsBetterImage ? "Unclear" : "Clear");
+
   const detectedItems =
     raw.detectedItems || raw.detected_classes || raw.detectedClasses || [];
+
   const description =
     raw.description || "AI analysis result returned from backend.";
+
   const recommendations =
     raw.recommendations ||
     raw.recommendation ||
@@ -63,11 +80,13 @@ function normalizeAiResponse(raw = {}, isLive = false) {
     pollutionType,
     severity,
     urgencyScore,
-    detectedCount,
-    densityLevel,
-    coveragePercent: Number(coveragePercent.toFixed(2)),
+    urgency: `${urgencyScore}/10`,
+    status,
+    actionNeeded,
+    reportType,
+    imageQuality,
     confidence,
-    detectedItems,
+    detectedItems: Array.isArray(detectedItems) ? detectedItems : [],
     description,
     recommendations,
     live: Boolean(raw.live ?? isLive),
@@ -75,13 +94,9 @@ function normalizeAiResponse(raw = {}, isLive = false) {
 
     pollution_type: pollutionType,
     severity_label: severity.toUpperCase(),
-    urgency: `${urgencyScore}/10`,
-    objects_detected: detectedCount,
-    density: toTitleCase(densityLevel),
-    coverage: `${Number(coveragePercent).toFixed(2)}%`,
-    detected_classes: detectedItems,
     recommendation: recommendations,
     confidence_percent: `${Math.round(confidence * 100)}.00%`,
+    severity_display: toTitleCase(severity),
   };
 }
 

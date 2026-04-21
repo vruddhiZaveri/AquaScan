@@ -1,12 +1,12 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { T } from "../../styles/theme.js";
 import Button from "../../components/common/Button.jsx";
 import DetectionResult from "../../components/report/DetectionResult.jsx";
 import UploadCard from "../../components/report/UploadCard.jsx";
 import { reportService } from "../../services/reportService.js";
-import { calcPts, now } from "../../utils/helpers.js";
 import { useLocation } from "../../hooks/useLocation.js";
-import { storage } from "../../services/storageService.js";
+
+const API_BASE = "http://localhost:5001/api";
 
 const MOCK_COMMITTEES = [
   {
@@ -30,7 +30,28 @@ export default function Scan({ user, nav, toast, onUpdateUser }) {
   const [selectedFile, setSelectedFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [showDiscard, setShowDiscard] = useState(false);
+  const [loadingSeconds, setLoadingSeconds] = useState(0);
   const { locName } = useLocation();
+
+  useEffect(() => {
+    if (!submitting) {
+      setLoadingSeconds(0);
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      setLoadingSeconds((prev) => prev + 1);
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [submitting]);
+
+  const loadingMessage = useMemo(() => {
+    if (loadingSeconds < 8) return "This may take a few seconds.";
+    if (loadingSeconds < 15)
+      return "Still working... the model is taking longer than usual.";
+    return "This is taking too long. We will stop the request automatically so you can try again.";
+  }, [loadingSeconds]);
 
   const handleFile = (e) => {
     const file = e.target.files?.[0];
@@ -38,6 +59,8 @@ export default function Scan({ user, nav, toast, onUpdateUser }) {
 
     setSelectedFile(file);
     setAi(null);
+    setSubmitting(false);
+    setLoadingSeconds(0);
 
     const reader = new FileReader();
     reader.onload = (ev) => {
@@ -47,67 +70,59 @@ export default function Scan({ user, nav, toast, onUpdateUser }) {
     reader.readAsDataURL(file);
   };
 
- const handleSubmit = async () => {
-   if (!imageData && !selectedFile) {
-     toast?.("Please upload an image first.");
-     return;
-   }
+  const handleSubmit = async () => {
+    if (!imageData && !selectedFile) {
+      toast?.("Please upload an image first.");
+      return;
+    }
 
-   try {
-     setSubmitting(true);
-     setStep(3);
+    try {
+      setSubmitting(true);
+      setStep(3);
 
-     const createdReport = await reportService.create({
-       userId: user?.id || "",
-       userName: user?.fullName || user?.name || "Citizen User",
-       userEmail: user?.email || "",
-       comment,
-       locationName: locName || "Unknown location",
-       imageData,
-       selectedCommittees: selected,
-       file: selectedFile,
-     });
+      const createdReport = await reportService.create({
+        userId: user?.id || "",
+        userName: user?.fullName || user?.name || "Citizen User",
+        userEmail: user?.email || "",
+        comment,
+        locationName: locName || "Unknown location",
+        imageData,
+        selectedCommittees: selected,
+        file: selectedFile,
+      });
 
-     const finalAi = createdReport?.ai || null;
-     setAi(finalAi);
+      const finalAi = createdReport?.ai || null;
+      setAi(finalAi);
 
-     const pts = calcPts(finalAi?.severity, finalAi?.detectedCount);
+      try {
+        const res = await fetch(`${API_BASE}/user/${user?.id}`);
+        const data = await res.json();
 
-     const users = (await storage.get("aqs:users")) || {};
-     const key = String(user?.email || "").replace(/[^a-z0-9]/gi, "_");
+        if (data?.success && data?.user) {
+          onUpdateUser?.({
+            ...user,
+            impactPoints: data.user.totalPoints || 0,
+            totalReportsSubmitted: data.user.totalReportsSubmitted || 0,
+            totalResolvedReports: data.user.totalResolvedReports || 0,
+            badges: data.user.badges || [],
+            badge: data.user.badge || "Wayfinder",
+            pointsHistory: data.user.pointsHistory || [],
+          });
+        }
+      } catch (error) {
+        console.error("Failed to refresh user profile:", error);
+      }
 
-     if (key && users[key]) {
-       users[key].impactPoints = (users[key].impactPoints || 0) + pts;
-       users[key].totalReportsSubmitted =
-         (users[key].totalReportsSubmitted || 0) + 1;
-       users[key].lastReportDate = new Date().toISOString();
-       users[key].streakDays = Math.max(users[key].streakDays || 0, 1);
-       users[key].pointsHistory = [
-         ...(users[key].pointsHistory || []).slice(-29),
-         { reason: "Pollution Report Filed", points: pts, timestamp: now() },
-       ];
-
-       if (
-         (users[key].totalReportsSubmitted || 0) >= 1 &&
-         !(users[key].badges || []).includes("Quartz Scout")
-       ) {
-         users[key].badges = [...(users[key].badges || []), "Quartz Scout"];
-       }
-
-       await storage.set("aqs:users", users);
-       onUpdateUser?.(users[key]);
-     }
-
-     setStep(4);
-     toast?.(`Report filed! +${pts} pts 🌊`);
-   } catch (error) {
-     console.error("Submit failed:", error);
-     toast?.(error.message || "Failed to submit report.");
-     setStep(2);
-   } finally {
-     setSubmitting(false);
-   }
- };
+      setStep(4);
+      toast?.("Report filed! +35 pts 🌊");
+    } catch (error) {
+      console.error("Submit failed:", error);
+      toast?.(error.message || "Failed to submit report.");
+      setStep(2);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   if (step === 4) {
     return (
@@ -178,11 +193,7 @@ export default function Scan({ user, nav, toast, onUpdateUser }) {
           <span style={{ color: T.blueL, fontWeight: 700 }}>
             {selected.length || 1} committee(s)
           </span>
-          .
-          <span style={{ color: T.success, fontWeight: 700 }}>
-            {" "}
-            +{calcPts(ai?.severity, ai?.detectedCount)} pts!
-          </span>
+          .<span style={{ color: T.success, fontWeight: 700 }}> +35 pts!</span>
         </p>
 
         <Button
@@ -298,7 +309,6 @@ export default function Scan({ user, nav, toast, onUpdateUser }) {
               (label, i) => {
                 const activeIndex =
                   step === 1 ? 0 : step === 2 ? 1 : step === 3 ? 2 : 3;
-
                 return (
                   <div
                     key={i}
@@ -359,7 +369,6 @@ export default function Scan({ user, nav, toast, onUpdateUser }) {
               >
                 Add a short note
               </div>
-
               <textarea
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
@@ -417,11 +426,9 @@ export default function Scan({ user, nav, toast, onUpdateUser }) {
             >
               Select committee(s)
             </div>
-
             <div style={{ display: "grid", gap: 10 }}>
               {MOCK_COMMITTEES.map((committee) => {
                 const checked = selected.some((c) => c.id === committee.id);
-
                 return (
                   <label
                     key={committee.id}
@@ -449,11 +456,7 @@ export default function Scan({ user, nav, toast, onUpdateUser }) {
                     />
                     <div>
                       <div
-                        style={{
-                          color: T.t1,
-                          fontSize: 13,
-                          fontWeight: 700,
-                        }}
+                        style={{ color: T.t1, fontSize: 13, fontWeight: 700 }}
                       >
                         {committee.committeeName}
                       </div>
@@ -475,7 +478,6 @@ export default function Scan({ user, nav, toast, onUpdateUser }) {
             >
               Change Image
             </Button>
-
             <Button
               onClick={handleSubmit}
               disabled={submitting || !imageData}
@@ -524,12 +526,32 @@ export default function Scan({ user, nav, toast, onUpdateUser }) {
               Analyzing image and generating pollution report...
             </div>
             <div style={{ color: T.t3, fontSize: 13, lineHeight: 1.5 }}>
-              This may take a few seconds.
+              {loadingMessage}
+            </div>
+            <div
+              style={{
+                color: T.blueL,
+                fontSize: 12,
+                marginTop: 10,
+                fontWeight: 700,
+              }}
+            >
+              Elapsed: {loadingSeconds}s
             </div>
           </div>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setSubmitting(false);
+              setStep(2);
+              toast?.("Request cancelled. Please try again.");
+            }}
+            style={{ width: "auto", padding: "10px 18px" }}
+          >
+            Back to review
+          </Button>
         </div>
       )}
     </div>
   );
 }
-  

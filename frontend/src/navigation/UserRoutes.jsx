@@ -1,9 +1,5 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// frontend/src/navigation/UserRoutes.jsx
-// ─────────────────────────────────────────────────────────────────────────────
 import React, { useState } from "react";
 import AppShell from "../components/layout/AppShell.jsx";
-import BottomNav from "../components/layout/BottomNav.jsx";
 import Toast from "../components/common/Toast.jsx";
 import { CITIZEN_TABS } from "../utils/constants.js";
 import Home from "../pages/user/Home.jsx";
@@ -55,7 +51,14 @@ export default function UserRoutes({ user, onLogout, onUpdateUser }) {
           <UserChat report={payload} user={user} nav={nav} />
         ) : null;
       case "profile":
-        return <Profile user={user} nav={nav} onLogout={onLogout} />;
+        return (
+          <Profile
+            user={user}
+            nav={nav}
+            onLogout={onLogout}
+            onUpdateUser={onUpdateUser}
+          />
+        );
       default:
         return <Home user={user} nav={nav} />;
     }
