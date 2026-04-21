@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Project-AquaScan-0ea5e9?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/Focus-Water%20Pollution%20Reporting-22c55e?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Frontend-React%20%2B%20Vite-22c55e?style=for-the-badge" />
   <img src="https://img.shields.io/badge/Backend-Node.js%20%2B%20Express-f59e0b?style=for-the-badge" />
   <img src="https://img.shields.io/badge/ML-Python%20%2B%20YOLO-8b5cf6?style=for-the-badge" />
 </p>
